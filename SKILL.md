@@ -33,7 +33,8 @@ Never    global ~/.claude config, application code, settings, hooks, commits, pu
 Rules    built only from VERIFIED evidence; commands must exist in the repo; path-scoped where possible;
          include verification, surgical-change, failure-handling, security, architecture (boundaries,
          dependency direction, exemplars), performance (budgets/benchmarks when found, hot paths),
-         code quality (coding standard, conventions, no duplicate code), docs/comments kept in sync
+         code quality (coding standard, conventions, no duplicate code), verified language/library
+         versions (no invented APIs, no newer syntax, no deprecated APIs), docs/comments kept in sync
          with changes, and orchestration rules where they apply, plus a Definition of Done
 Rerun    safe and idempotent; an unchanged repo gives little or no diff
 Report   findings, files changed, highest-impact rules, preserved/rewritten rules, unknowns, risks,
@@ -63,6 +64,8 @@ The generated rules must instill these agent behaviors, phrased concretely for T
 - **Prefer simplicity:** smallest coherent solution; established repo patterns; no speculative abstractions, premature generalization, unnecessary dependencies, or hypothetical architecture.
 - **Surgical changes:** every changed line traces to the task, a necessary supporting change, a correctness issue the task exposed, or required validation. No opportunistic refactors, unrelated formatting/renaming, dependency churn, or drive-by cleanup.
 - **Own the outcome:** understand → implement → validate → investigate failures → fix introduced failures → completeness sweep → inspect final diff → report remaining uncertainty accurately. Editing files is never "done".
+- **Never invent what doesn't exist:** no fabricated functions, methods, classes, modules, packages, config keys, CLI flags, env vars, files, endpoints, or library options. Anything used in code or cited in a report must first be confirmed to exist in the repo, in the installed or locked dependency version, or in that version's documentation. If its existence can't be confirmed, say so instead of guessing.
+- **Version-correct code:** write code for the language, runtime, and dependency versions the repo actually targets. Use no syntax or API newer than the minimum supported version, and no deprecated API.
 - **Verify before reporting:** distinguish implemented / statically checked / unit tested / integration tested / manually exercised / fully validated / unverified. Never claim tests pass, build succeeds, the app works, a bug is fixed, or a migration is safe unless that verification actually ran and succeeded. State exactly what remains unverified.
 - **Condition → action → verification:** write rules as `WHEN <condition> → DO <action> → VERIFY <observable result>` wherever the shape fits. Never write "write clean code", "follow best practices", "be careful", "write secure code", or similar filler.
 
@@ -84,6 +87,14 @@ Establish, where evidence permits, and label each item VERIFIED / INFERRED / UNK
 
 - **Structure:** apps, packages, libraries, modules, services, infrastructure, tests, generated output, docs.
 - **Tooling:** languages, frameworks, build tooling, package manager (lockfile is evidence), build/test/lint/format/typecheck/static-analysis tools.
+- **Versions:** the language/runtime version and the supported range, from:
+  - version files: `.python-version`, `.nvmrc`/`.node-version`, `.tool-versions`, `mise.toml`, `rust-toolchain.toml`;
+  - manifest fields: `requires-python`, `engines`, the `go` directive in `go.mod`, `edition`/`rust-version`, `composer.json` `php`, Gradle/Maven toolchain or `release`;
+  - TS `target`/`lib`, Dockerfile base images, the CI matrix;
+  - for frameworks and key libraries, the **locked** versions from the lockfile (not the manifest range).
+
+  Derive the **minimum** version code must run on. When the CI matrix covers several versions, the lowest one counts. Surface conflicts between sources (e.g. `.python-version` 3.12 but `requires-python >=3.10`).
+- **Deprecation tooling:** what already flags deprecated or outdated usage, with its command. Examples: ruff `UP` (pyupgrade) and its `target-version`, pyright/mypy deprecation reporting, `-W error::DeprecationWarning` in pytest config, eslint deprecation rules, TS `@deprecated` diagnostics, staticcheck `SA1019`, `go vet`, rustc/clippy deprecation lints, `-Xlint:deprecation`/`-Werror`, PHPStan deprecation rules. Also record where deprecation warnings show up (test and build output).
 - **Architecture:** entry points, module/package boundaries, public interfaces, APIs, persistence, workers/queues, external integrations. Look for explicit architecture evidence:
   - ADRs and `docs/architecture*`;
   - dependency-rule tooling: import-linter, dependency-cruiser, eslint boundary/import rules, ArchUnit, Nx/Turborepo project constraints, Bazel/Gradle module visibility, Go `internal/`, TS project references or path aliases;
@@ -233,6 +244,13 @@ Rules without `paths` load always. Every glob MUST match at least one existing t
   - No dead code, commented-out code, debug prints, or orphan TODOs (a TODO needs context, or the repo's issue reference convention). Comments explain *why*, not *what*.
   - WHEN considering a new dependency → DO check whether the stdlib or an existing dependency covers it, and add it through the package manager so the lockfile updates → VERIFY the report justifies the new dependency.
   - Respect enforced limits (complexity, length, coverage thresholds) by restructuring, never by raising the limit.
+- **Versions, real APIs, no deprecations** (always generated when versions are verified; name the actual versions and sources):
+  - State the verified versions in CLAUDE.md: language/runtime minimum (and the CI matrix if any) plus the key framework/library versions from the lockfile. Example: "Python ≥3.10 (CI 3.10–3.12), FastAPI 0.115.x, SQLAlchemy 2.0.x, Pydantic v2".
+  - WHEN writing code → DO use only syntax and stdlib features available in the **minimum** supported version → VERIFY against the version's docs or the configured target tool (ruff `target-version`, TS `target`, `rust-version`), not against whatever interpreter happens to be installed locally.
+  - WHEN using any library/framework API, function, method, option, config key, or CLI flag → DO confirm it exists in the **locked** version: in the repo's existing usage, the installed package source (`site-packages`, `node_modules`, the module cache), or that version's official docs → VERIFY before using it. If it can't be confirmed, say so and don't guess. Never mix API generations (e.g. Pydantic v1 vs v2, SQLAlchemy 1.x vs 2.0 style, React class vs hooks) against what the repo uses.
+  - WHEN choosing between APIs → DO use the non-deprecated one for that version, matching the repo's existing modern usage → VERIFY there are no new deprecation warnings in the test/build output and the configured deprecation lint passes.
+  - Existing deprecated usage: don't spread it to new code, and migrate it only when it's inside the task's scope. Otherwise report it.
+  - Don't upgrade the language version, dependencies, or the lockfile unasked. WHEN the task genuinely needs a newer version → DO stop and ask, naming the reason and the blast radius.
   - **Coding standard:** WHEN writing or changing code → DO follow the standard the repo adopts (name it and its config) and run the repo's formatter/linter on the changed files → VERIFY the check passes on them. Format only the code you touched, unless the repo formats whole files by convention (e.g. a pre-commit formatter); never reformat unrelated code.
   - **Conventions:** state each verified convention concretely (e.g. "files `kebab-case.ts`, components `PascalCase`, tests `test_<module>.py` next to `tests/<area>/`"). WHEN creating a file, identifier, or module → DO match these → VERIFY that the new names in the diff follow them. Commit/PR conventions only when enforced and Claude is asked to commit.
   - **No duplicate code:** WHEN about to write a helper, util, type, constant, validation, query, or UI component → DO first search the repo's shared locations (name them) and the nearby code for an existing equivalent, and reuse or extend it → VERIFY the diff doesn't re-implement something that already exists (run the duplication tool if configured).
@@ -315,6 +333,8 @@ Mentally run the resulting rules against these scenarios, keeping only the ones 
 - A function's behavior changes, and its docstring and comments still describe the old behavior. Would Claude update them?
 - A refactor moves a module that CLAUDE.md references. Would the rules be updated, or flagged?
 - A change ignores the file and identifier naming conventions, or reformats untouched code. Do the convention and standard rules prevent it?
+- Code calls a library method or config option that doesn't exist in the locked version (a hallucinated or newer API). Do the rules force checking the installed source or that version's docs first?
+- Code uses syntax newer than the minimum supported version (e.g. 3.12 syntax under `requires-python >=3.10`), or a deprecated API. Do the version rules catch it?
 - A lint or type error is "fixed" with a suppression or a weakened config. Do the quality rules require fixing the cause?
 - A change ships without a test of its failure path, or with a flaky time- or network-dependent test. Do the test rules catch it?
 - Two parallel agents both need to edit a shared file or contract. Do the rules force a single owner and an ordering?
@@ -331,6 +351,7 @@ Using only capabilities that actually exist:
 - Every `paths` glob matches existing files (`git ls-files` / `find`).
 - Every command in the config is backed by a script, target, or CI step you observed. List each with its evidence.
 - Every referenced file or directory path exists, including the named exemplar files. Each exemplar actually represents the convention it's cited for.
+- Every version stated in the rules matches its source (version file, manifest, lockfile, CI matrix), and the minimum version is derived correctly.
 - Every architecture or performance tool cited (import-linter, dependency-cruiser, a benchmark/budget command, etc.) is configured in the repo, and its command is verified like any other command.
 - No rules contradict each other or the remaining existing config.
 - No secret values are present: grep the written files for key/token/password-like patterns and high-entropy strings.
@@ -360,6 +381,7 @@ Generate a repository-specific DoD in CLAUDE.md containing only the items that a
 - benchmarks or budgets are run when the change touches covered code (name the command), with the numbers reported
 - the diff has no unexplained suppressions, dead code, debug output, or unjustified new dependencies
 - the formatter/linter pass on the changed files (name the commands); new names follow the verified conventions; no logic duplicates existing code
+- every API, option, and flag used exists in the locked versions; the code runs on the minimum supported version; no new deprecation warnings or deprecated APIs
 - the related docs, comments, `.env.example`, and changelog (when required) are updated; the doc build or link check passes where configured; CLAUDE.md and the rules are still true after the change
 - generated artifacts are refreshed via their generator, where applicable
 - every failure is investigated and classified, and introduced failures are fixed
@@ -387,7 +409,7 @@ This skill must be safe to rerun.
 
 Return:
 
-**Repository findings**: only important VERIFIED findings on architecture, tooling, boundaries, validation, and operations. Include the architecture rules found (tool-enforced vs convention-only), the performance evidence found (budgets, benchmarks, SLOs, hot paths; executable vs documented only), the code-quality conventions and exemplars chosen, the adopted coding standard with its enforcing config, the shared-code locations used for reuse, and the documentation locations, tooling, and drift found.
+**Repository findings**: only important VERIFIED findings on architecture, tooling, boundaries, validation, and operations. Include the architecture rules found (tool-enforced vs convention-only), the performance evidence found (budgets, benchmarks, SLOs, hot paths; executable vs documented only), the code-quality conventions and exemplars chosen, the adopted coding standard with its enforcing config, the shared-code locations used for reuse, the documentation locations, tooling, and drift found, and the verified language/runtime/framework versions (the minimum, its source, any conflicts) plus the deprecation tooling.
 
 **Configuration changed**: for each file: `path` · purpose · scope (always-loaded or the `paths` globs) · created/updated.
 
