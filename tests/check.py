@@ -44,8 +44,10 @@ NEGATION = re.compile(r"n't|not |no |missing|absent", re.I)
 paths = {t for line in claude.splitlines() if not NEGATION.search(line)
          for t in re.findall(r"`([^`\s<>]+)`", line)
          if "/" in t or re.search(r"\.(py|toml|ini|yml|md|proto|example)$", t)}
-paths = {p.rstrip("/").split("::")[0] for p in paths if not p.startswith(("http", "-"))}
-missing = [p for p in paths if not glob.glob(f"{repo}/{p}", recursive=True)]
+paths = {p.rstrip("/").split("::")[0] for p in paths if not p.startswith(("http", "-", ".claude/"))}
+# A bare file name (e.g. `models.py` next to `app/db/`) may live anywhere in the repo.
+missing = [p for p in paths
+           if not glob.glob(f"{repo}/{p}" if "/" in p else f"{repo}/**/{p}", recursive=True)]
 check(not missing, f"all referenced paths exist (missing: {missing})")
 
 # Rules files: valid frontmatter, only `paths`, every glob matches a tracked file.

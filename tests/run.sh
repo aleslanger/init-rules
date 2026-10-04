@@ -23,5 +23,5 @@ echo "== full run (several minutes)"
   --allowedTools "Read,Write,Edit,Glob,Grep,TodoWrite,Agent,Edit(.claude/rules/**),Edit(CLAUDE.md),Bash(mkdir *),Bash(git *),Bash(ls *),Bash(find *),Bash(cat *),Bash(grep *),Bash(python3 *),Bash(wc *),Bash(head *),Bash(make -n *)" \
   > "$work/report.txt" 2>&1)
 
-python3 "$here/check.py" "$repo" "$work/report.txt"
 [ "${1:-}" = "--keep" ] && echo "kept: $work"
+python3 "$here/check.py" "$repo" "$work/report.txt"
