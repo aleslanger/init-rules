@@ -100,3 +100,7 @@ tests/run.sh --keep   # keep the temp repo and report for inspection
 ```
 
 The fixture's `CLAUDE.md` is stored as `CLAUDE.md.fixture` so it never loads while you work on this repo.
+
+## License
+
+[MIT](LICENSE)
