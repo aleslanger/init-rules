@@ -2,11 +2,41 @@
 name: init-rules
 description: Initialize, audit, or improve the CURRENT repository's Claude Code rules (CLAUDE.md and .claude/rules/*.md) from verified repository evidence. Explicit invocation only via /init-rules.
 disable-model-invocation: true
+argument-hint: "[help | coordinator | herdr | <focus area>]"
 ---
 
 # /init-rules: evidence-based project rules
 
 You are creating, auditing, or improving the Claude Code configuration of the **current repository only**. Optional user focus: $ARGUMENTS
+
+## Help mode
+
+If the arguments are `help`, `--help`, `-h`, or `?`, output ONLY the help below, in the user's conversation language, and stop. Don't read, run, or write anything else.
+
+```text
+/init-rules: create, audit, or improve this repository's Claude Code rules
+(CLAUDE.md + .claude/rules/*.md) from verified repository evidence.
+
+Usage
+  /init-rules                  analyze the repo; create the rules or audit/update existing ones
+  /init-rules <focus area>     same, with extra attention to an area (e.g. "API", "migrations")
+  /init-rules coordinator      also generate the coordinator model: the main agent doesn't write code;
+                               it delegates, reviews (accept/return/reassign/discard/escalate),
+                               merges, and supervises agent state
+  /init-rules herdr            also generate Herdr (herdr.dev) rules, even without repo evidence of Herdr
+  /init-rules help             show this help
+  Arguments can be combined, e.g. /init-rules coordinator herdr API
+
+Writes   only CLAUDE.md and .claude/rules/*.md of the current repo
+         (Claude Code asks you to approve writes to .claude/)
+Never    global ~/.claude config, application code, settings, hooks, commits, pushes
+Rules    built only from VERIFIED evidence; commands must exist in the repo; path-scoped where possible;
+         include verification, surgical-change, failure-handling, security, and orchestration rules
+         where they apply, plus a Definition of Done
+Rerun    safe and idempotent; an unchanged repo gives little or no diff
+Report   findings, files changed, highest-impact rules, preserved/rewritten rules, unknowns, risks,
+         mechanical-enforcement candidates (recommended, not installed), exact validation performed
+```
 
 ## 0. Scope and hard limits
 

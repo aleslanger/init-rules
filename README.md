@@ -2,7 +2,7 @@
 
 User-level Claude Code skill that initializes, audits, or improves the **current repository's** Claude Code rules (`CLAUDE.md` and path-scoped `.claude/rules/*.md`) from verified repository evidence.
 
-- Invocation: `/init-rules [optional focus]`
+- Invocation: `/init-rules [help | coordinator | herdr | <focus area>]` (`/init-rules help` shows usage)
 - Explicit-only: `disable-model-invocation: true`, so Claude never runs it on its own.
 - Writes only the current project's `CLAUDE.md` / `.claude/rules/`; never global config, application code, or settings. Mechanical enforcement (permissions, hooks) is recommended in the report, not installed.
 
