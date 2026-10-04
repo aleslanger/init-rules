@@ -31,8 +31,10 @@ Writes   only CLAUDE.md and .claude/rules/*.md of the current repo
          (Claude Code asks you to approve writes to .claude/)
 Never    global ~/.claude config, application code, settings, hooks, commits, pushes
 Rules    built only from VERIFIED evidence; commands must exist in the repo; path-scoped where possible;
-         include verification, surgical-change, failure-handling, security, and orchestration rules
-         where they apply, plus a Definition of Done
+         include verification, surgical-change, failure-handling, security, architecture (boundaries,
+         dependency direction, exemplars), performance (budgets/benchmarks when found, hot paths),
+         code quality (coding standard, conventions, no duplicate code), docs/comments kept in sync
+         with changes, and orchestration rules where they apply, plus a Definition of Done
 Rerun    safe and idempotent; an unchanged repo gives little or no diff
 Report   findings, files changed, highest-impact rules, preserved/rewritten rules, unknowns, risks,
          mechanical-enforcement candidates (recommended, not installed), exact validation performed
@@ -82,7 +84,42 @@ Establish, where evidence permits, and label each item VERIFIED / INFERRED / UNK
 
 - **Structure:** apps, packages, libraries, modules, services, infrastructure, tests, generated output, docs.
 - **Tooling:** languages, frameworks, build tooling, package manager (lockfile is evidence), build/test/lint/format/typecheck/static-analysis tools.
-- **Architecture:** entry points, module/package boundaries, public interfaces, APIs, persistence, workers/queues, external integrations.
+- **Architecture:** entry points, module/package boundaries, public interfaces, APIs, persistence, workers/queues, external integrations. Look for explicit architecture evidence:
+  - ADRs and `docs/architecture*`;
+  - dependency-rule tooling: import-linter, dependency-cruiser, eslint boundary/import rules, ArchUnit, Nx/Turborepo project constraints, Bazel/Gradle module visibility, Go `internal/`, TS project references or path aliases;
+  - layering visible in the code (e.g. routes → services → repositories), and where it is violated;
+  - the dependency direction between packages, and what is public versus internal per package.
+
+  Record which rules are **enforced by tooling** (cite the config) versus **convention only** (cite 2–3 exemplars).
+- **Performance:** look for explicit performance evidence before writing any performance rule:
+  - benchmarks (pytest-benchmark, Go `Benchmark*`, criterion, JMH, vitest/jest bench);
+  - load tests (k6, Locust, Gatling, JMeter);
+  - budgets and thresholds (size-limit, bundlesize, Lighthouse CI budgets, perf assertions in tests);
+  - SLO/latency targets in docs;
+  - documented hot paths;
+  - caching layers and their invalidation;
+  - query patterns (eager loading, batching, pagination limits, indexes in migrations);
+  - timeouts and pool sizes in config;
+  - profiling or perf CI jobs.
+
+  Note which evidence is executable (has a command) and which is documented only.
+- **Code quality conventions:**
+  - **Linting and types:** the enabled rule sets and severity (not just the linter's presence), type strictness, and suppression conventions (`noqa`, `eslint-disable`, `@ts-expect-error`, `#[allow]`) and how often they're used.
+  - **Thresholds:** complexity and length limits, coverage thresholds.
+  - **Errors and logging:** error-handling conventions (custom error types, result types, error wrapping, where errors get translated at boundaries) and the logging conventions.
+  - **Tests:** test conventions (layout, fixtures, factories, mocking style, naming).
+  - **Contribution process:** PR templates, CODEOWNERS, review checklists, `.editorconfig`.
+  - **Coding standard:** the standard the repo actually adopts, and where it's enforced. Examples: PEP 8 via ruff/black/flake8, PSR-12 via phpcs, gofmt/golangci-lint, rustfmt/clippy, an eslint shared config (airbnb, standard), Google Java Style via checkstyle/spotless. Also look for style sections in `CONTRIBUTING*`, `STYLEGUIDE*`, or `docs/*standards*`.
+  - **Conventions:** naming (file and directory case, test file names, identifiers, modules), import ordering, and module layout. Each must be confirmed by linter config or at least 3 consistent examples. Commit/PR conventions only when enforced (commitlint, conventional commits, changelog tooling).
+  - **Reuse and duplication:** where the shared helpers, utils, types, constants, validators, and query helpers live (name the paths). Also any duplication tooling (jscpd, PMD CPD, pylint `duplicate-code`, Sonar) and its threshold.
+  - **Exemplars:** 1–3 files that best represent "how code is written here" for each major kind of change (endpoint, service, component, migration, test).
+- **Documentation:**
+  - **Inventory:** READMEs (root and per package), `docs/`, `.env.example`, and where the commands, config/env vars, CLI flags, and public APIs are documented.
+  - **Code-level docs:** docstring/JSDoc/rustdoc/godoc conventions and their linting (pydocstyle/ruff `D`, eslint-plugin-jsdoc, `missing_docs`).
+  - **Changelog:** keep-a-changelog, changesets, release-please, or towncrier, and whether an entry is required per change.
+  - **Doc tooling:** build tooling (MkDocs, Sphinx, Docusaurus, TypeDoc), link checks, doctests or tested examples, with their commands.
+  - **Generated docs:** which docs are generated (OpenAPI, API reference) and from what.
+  - **Drift:** existing doc drift, i.e. docs that contradict the code, including commands or paths in the README that don't exist.
 - **Data:** persistence model, schemas, migrations (and their tool), transaction boundaries, generated models, source-of-truth files.
 - **Security:** input validation, authentication, authorization, secret handling, env configuration, trust boundaries, sensitive data. Treat **authentication and authorization separately**; authentication never implies authorization.
 - **Operations:** CI, deployment, releases, versioning, logging, monitoring, error handling, runtime config.
@@ -119,7 +156,8 @@ Evaluate only risks actually relevant to this repo, with evidence:
 - **AuthN / AuthZ (separately):** where identity is established; where permissions are enforced; ownership/resource-level checks; privilege boundaries.
 - **Data integrity:** migrations, destructive ops, transactions, partial writes, retry safety, duplicate processing, idempotency.
 - **Concurrency:** races, atomicity, locking, check-then-act, ordering assumptions, concurrent updates.
-- **Performance (only where relevant):** Big-O, hot loops, N+1 access, repeated I/O or network calls, blocking work, memory-heavy ops, unbounded collections. Do not invent performance requirements.
+- **Performance (only where relevant):** Big-O, hot loops, N+1 access, repeated I/O or network calls, blocking work, memory-heavy ops, unbounded collections. Do not invent performance requirements. Turn found budgets, benchmarks, and SLOs into rules; without such evidence, limit performance rules to the verified hot paths and data-access layers.
+- **Architecture erosion:** boundary violations that already exist, circular dependencies, god modules, and layers the code bypasses. Rules must say how to treat existing violations: don't copy them, don't fix them unasked.
 - **Reliability:** dependency failures, timeouts, retries, cleanup, partial availability, resource leaks.
 - **Observability:** meaningful logging, sensitive-data leakage in logs, the monitoring/tracing the project already uses, useful error context. Do not impose a stack the project doesn't use.
 - **Generated files:** identify generated artifacts and their source of truth and generator command (section 4).
@@ -151,7 +189,7 @@ Look specifically for: obsolete facts, duplicates, conflicts, nonexistent comman
 
 Target about 50–150 lines; exceed about 200 only with a stated reason. Not a handbook. Don't restate what Claude can trivially read from the code (file listings, obvious conventions).
 
-**`.claude/rules/*.md`**: one focused concern per file. Create a file only when there is enough repository-specific content to justify it. Candidate names, used ONLY where justified: `verification.md`, `change-discipline.md`, `security.md`, `testing.md`, `architecture.md`, `database.md`, `api.md`, `generated-files.md`, `orchestration.md`. Fewer strong rules beat many weak ones. Avoid duplicating content between CLAUDE.md and rules files.
+**`.claude/rules/*.md`**: one focused concern per file. Create a file only when there is enough repository-specific content to justify it. Candidate names, used ONLY where justified: `verification.md`, `change-discipline.md`, `security.md`, `testing.md`, `architecture.md`, `database.md`, `api.md`, `generated-files.md`, `orchestration.md`, `performance.md`, `code-quality.md`. Fewer strong rules beat many weak ones. Avoid duplicating content between CLAUDE.md and rules files.
 
 **Path scoping:** when a rule applies only to part of the repo (API, migrations, frontend, backend, infra, generated files, a package), scope it with the `paths` frontmatter this Claude Code version supports for `.claude/rules/*.md`:
 
@@ -176,7 +214,40 @@ Rules without `paths` load always. Every glob MUST match at least one existing t
 - **Secrets:** never put secret values into Claude config or responses. Rules must forbid committing credentials, echoing or logging secrets, exposing them in responses, and replacing secret injection with hardcoded values. Name the repo's actual secret mechanism and files (paths only).
 - **AuthN/AuthZ:** where the repo has both, a scoped rule: WHEN changing authentication or request handling → DO verify authorization/ownership checks separately at <verified enforcement points> → VERIFY with tests or code inspection that the permission path is covered.
 - **Data/concurrency:** where the repo mutates shared or persistent state, retries, or processes queues: require examining transactions, idempotency, duplicate processing, and check-then-act races, scoped to the relevant paths.
-- **Performance:** only for verified hot paths or query layers: consider complexity, N+1 access, and repeated I/O when changing loops or data access there.
+- **Architecture** (when boundaries are verified; scope the rules to the affected paths). Rules come straight from the evidence: name the actual layers, packages, and allowed dependency directions.
+  - WHEN adding an import or call across a module/package/layer boundary → DO check it against the verified dependency direction and use the target's public interface, not its internals → VERIFY with the enforcing tool's command where one exists; otherwise by inspecting the imports in the diff.
+  - WHEN adding new code → DO place it where the closest existing equivalent lives, following the named exemplar (e.g. "new endpoint: like `<path>`") → VERIFY no new top-level module, layer, or pattern was introduced without an explicit reason in the report.
+  - WHEN a change contradicts an ADR or architecture doc → DO stop and surface the conflict instead of silently deviating → VERIFY the report names the ADR.
+  - WHEN changing a public interface (exported API, shared types, HTTP/RPC contract, event schema) → DO find all its consumers first and follow the repo's compatibility/versioning convention → VERIFY the consumers are updated or confirmed unaffected.
+  - Existing violations (cycles, bypassed layers): don't replicate them in new code, and don't refactor them unasked; mention them in the report.
+- **Performance** (budgets and benchmarks as strict rules when found; otherwise only verified hot paths and data-access layers):
+  - WHEN changing code covered by a benchmark, load test, or budget → DO run the verified command before and after → VERIFY that the result stays within the budget, or report the regression with the numbers. Never claim "faster" or "no regression" without a measurement.
+  - WHEN changing a loop or data access whose size grows with input, users, or rows on a hot path → DO state its complexity and the number of queries or I/O calls per item, and use the repo's existing batching, eager-loading, pagination, or caching pattern (name it) → VERIFY there's no N+1 access and no unbounded collection or result set in the diff.
+  - WHEN adding or changing a cache → DO define its key, TTL, and invalidation on writes using the existing cache layer → VERIFY that a write path invalidates it.
+  - Don't add speculative optimization (caches, async, concurrency) without a measured or documented need; optimize only where there is evidence.
+- **Code quality** (`code-quality.md`, or CLAUDE.md if short). Only rules that change behavior, each grounded in the repo's actual config and exemplars:
+  - Follow the named exemplars and the surrounding code: naming, structure, error handling, logging, and comment density. Don't import patterns from other ecosystems.
+  - Error handling per the repo convention (name its error types and where errors are translated). Never swallow errors (empty `catch`/`except`, ignored return values). Error messages carry context without leaking secrets or PII.
+  - WHEN adding a lint or type suppression (`noqa`, `eslint-disable`, `@ts-ignore`, `# type: ignore`, `#[allow]`, `any`) → DO fix the cause instead; if a suppression is truly required, make it narrow and add a reason comment → VERIFY the diff has no unexplained suppressions, and no weakened lint, type, or coverage config.
+  - WHEN behavior changes → DO add or update a test that follows the repo's test conventions (name the fixtures/factories) and covers the failure or edge path, not just the happy path → VERIFY that the test fails without the change when practical, and is deterministic (no real time, randomness, network, or sleep, unless the repo's pattern controls them).
+  - No dead code, commented-out code, debug prints, or orphan TODOs (a TODO needs context, or the repo's issue reference convention). Comments explain *why*, not *what*.
+  - WHEN considering a new dependency → DO check whether the stdlib or an existing dependency covers it, and add it through the package manager so the lockfile updates → VERIFY the report justifies the new dependency.
+  - Respect enforced limits (complexity, length, coverage thresholds) by restructuring, never by raising the limit.
+  - **Coding standard:** WHEN writing or changing code → DO follow the standard the repo adopts (name it and its config) and run the repo's formatter/linter on the changed files → VERIFY the check passes on them. Format only the code you touched, unless the repo formats whole files by convention (e.g. a pre-commit formatter); never reformat unrelated code.
+  - **Conventions:** state each verified convention concretely (e.g. "files `kebab-case.ts`, components `PascalCase`, tests `test_<module>.py` next to `tests/<area>/`"). WHEN creating a file, identifier, or module → DO match these → VERIFY that the new names in the diff follow them. Commit/PR conventions only when enforced and Claude is asked to commit.
+  - **No duplicate code:** WHEN about to write a helper, util, type, constant, validation, query, or UI component → DO first search the repo's shared locations (name them) and the nearby code for an existing equivalent, and reuse or extend it → VERIFY the diff doesn't re-implement something that already exists (run the duplication tool if configured).
+    - WHEN the change itself would repeat the same logic → DO extract it once, following the repo's pattern for shared code.
+    - Don't merge code that only looks similar but changes for different reasons, and don't build abstractions for a single use.
+    - No duplicated magic values: use the existing constants/config modules.
+    - Pre-existing duplication outside the task is reported, not refactored unasked.
+- **Documentation and comments** (keep docs in sync with every change; name the repo's actual doc locations):
+  - WHEN a change alters behavior users or developers rely on (public API, CLI flags, config/env vars, commands, setup or deploy steps, architecture or boundaries) → DO update the directly related docs in the same change: the README section, the `docs/` page, `.env.example`, and docstrings of changed public symbols → VERIFY that a grep of the docs for the old names, flags, env vars, or paths finds no stale references, and that the doc build or link check passes where one is configured.
+  - WHEN changing code that has comments or docstrings → DO update or delete the ones that no longer match the code; comments explain *why* or non-obvious constraints, not what the code plainly does → VERIFY there are no stale or contradictory comments in the touched hunks.
+  - Public symbols get docstrings only where the repo's convention or linter requires them, in the repo's format.
+  - Changelog: WHEN the repo requires an entry per change (changesets, an `Unreleased` section, towncrier fragments) → DO add it in the repo's format → VERIFY it exists in the diff. Otherwise don't touch the changelog.
+  - Generated docs (OpenAPI, API reference) are refreshed via their generator, never edited by hand.
+  - Rewrite only the docs related to the change. Doc drift found elsewhere is reported, not fixed unasked.
+  - **Keeping these rules current:** WHEN a change makes a fact in CLAUDE.md or `.claude/rules/` untrue (a command, path, convention, or boundary) → DO update that rule in the same change, or flag it in the report → VERIFY the rules don't reference removed paths or commands. After structural changes (new packages or modules, a tooling switch, a new CI pipeline), recommend rerunning `/init-rules`.
 - **External calls:** where integrations exist: consider timeout, retry, and failure behavior using the patterns the repo already uses.
 - **Orchestration (subagents / parallel agents):** generate only when the repo is large enough, or has independent verified modules, for delegation to matter; or when the project already defines agents/workflows in `.claude/agents/` or `.claude/workflows/`. A small single-module repo gets at most a line or two in CLAUDE.md, or nothing. Ground every rule in the repo's verified boundaries:
   - WHEN a task needs broad read-only exploration across many files → DO delegate it to a read-only subagent and keep only conclusions → VERIFY key claims by reading the cited files before acting on them. Do not delegate small or single-file tasks.
@@ -236,6 +307,16 @@ Mentally run the resulting rules against these scenarios, keeping only the ones 
 - Retryable or concurrent state mutation changes. Are races and idempotency examined?
 - A hot path or query loop changes. Are algorithmic and I/O costs considered?
 - An external dependency call changes. Are timeout and failure behavior considered?
+- A new feature imports another module's internals or bypasses a layer. Do the architecture rules name the allowed direction and the public interface?
+- New code invents its own structure instead of following the existing equivalent. Is there a named exemplar to follow?
+- A change to benchmarked or budgeted code is reported as "faster" or "fine" without numbers. Do the rules require a before/after measurement?
+- A new helper re-implements a util that already exists two directories away. Do the rules force a search of the named shared locations first?
+- An env var or CLI flag is renamed, but the README, `.env.example`, and docstrings still show the old name. Do the doc rules force a grep for stale references?
+- A function's behavior changes, and its docstring and comments still describe the old behavior. Would Claude update them?
+- A refactor moves a module that CLAUDE.md references. Would the rules be updated, or flagged?
+- A change ignores the file and identifier naming conventions, or reformats untouched code. Do the convention and standard rules prevent it?
+- A lint or type error is "fixed" with a suppression or a weakened config. Do the quality rules require fixing the cause?
+- A change ships without a test of its failure path, or with a flaky time- or network-dependent test. Do the test rules catch it?
 - Two parallel agents both need to edit a shared file or contract. Do the rules force a single owner and an ordering?
 - A subagent reports "all tests pass". Would the orchestrator re-verify before reporting it?
 - During review, the coordinator spots a one-line bug in a delivery. Do the rules make it RETURN the work instead of fixing it itself?
@@ -249,7 +330,8 @@ Using only capabilities that actually exist:
 - Frontmatter parses as YAML and uses only `paths` (rules files). Check by inspection or a quick parse (e.g. `python3 -c 'import yaml,sys; ...'` if available; otherwise state that it was inspected manually).
 - Every `paths` glob matches existing files (`git ls-files` / `find`).
 - Every command in the config is backed by a script, target, or CI step you observed. List each with its evidence.
-- Every referenced file or directory path exists.
+- Every referenced file or directory path exists, including the named exemplar files. Each exemplar actually represents the convention it's cited for.
+- Every architecture or performance tool cited (import-linter, dependency-cruiser, a benchmark/budget command, etc.) is configured in the repo, and its command is verified like any other command.
 - No rules contradict each other or the remaining existing config.
 - No secret values are present: grep the written files for key/token/password-like patterns and high-entropy strings.
 - Optional, only if it works in this environment: `/memory` (interactive) lists loaded memory files. Mention it as a manual check for the user; do not claim it ran if you could not run it. Do not invent other diagnostic commands.
@@ -274,6 +356,11 @@ Generate a repository-specific DoD in CLAUDE.md containing only the items that a
 - the requested behavior is implemented
 - focused validation is run (name the verified focused-test command)
 - broader validation is proportional to blast radius (name the verified commands)
+- architecture checks pass where tooling enforces boundaries (name the command)
+- benchmarks or budgets are run when the change touches covered code (name the command), with the numbers reported
+- the diff has no unexplained suppressions, dead code, debug output, or unjustified new dependencies
+- the formatter/linter pass on the changed files (name the commands); new names follow the verified conventions; no logic duplicates existing code
+- the related docs, comments, `.env.example`, and changelog (when required) are updated; the doc build or link check passes where configured; CLAUDE.md and the rules are still true after the change
 - generated artifacts are refreshed via their generator, where applicable
 - every failure is investigated and classified, and introduced failures are fixed
 - the final diff is reviewed for unrelated changes
@@ -300,7 +387,7 @@ This skill must be safe to rerun.
 
 Return:
 
-**Repository findings**: only important VERIFIED findings on architecture, tooling, boundaries, validation, and operations.
+**Repository findings**: only important VERIFIED findings on architecture, tooling, boundaries, validation, and operations. Include the architecture rules found (tool-enforced vs convention-only), the performance evidence found (budgets, benchmarks, SLOs, hot paths; executable vs documented only), the code-quality conventions and exemplars chosen, the adopted coding standard with its enforcing config, the shared-code locations used for reuse, and the documentation locations, tooling, and drift found.
 
 **Configuration changed**: for each file: `path` · purpose · scope (always-loaded or the `paths` globs) · created/updated.
 
