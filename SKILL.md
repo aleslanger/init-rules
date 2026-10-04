@@ -40,7 +40,7 @@ Track these phases with a todo list. Do not skip phases; keep each one proportio
 
 ### Phase A: Inventory existing agent configuration (always first)
 
-Read, if present: root and nested `CLAUDE.md`, `.claude/CLAUDE.md`, `CLAUDE.local.md` (read-only; it is personal, never edit it), `AGENTS.md`, `.claude/rules/**`, `.claude/settings.json`, `.claude/settings.local.json` (note only; never copy values), `.claude/hooks/`, `.claude/skills/`, `.cursorrules`, `.github/copilot-instructions.md`, and contributor/architecture docs (`CONTRIBUTING*`, `docs/architecture*`, ADRs).
+Read, if present: root and nested `CLAUDE.md`, `.claude/CLAUDE.md`, `CLAUDE.local.md` (read-only; it is personal, never edit it), `AGENTS.md`, `.claude/rules/**`, `.claude/settings.json`, `.claude/settings.local.json` (note only; never copy values), `.claude/hooks/`, `.claude/skills/`, `.claude/agents/`, `.claude/workflows/`, `.cursorrules`, `.github/copilot-instructions.md`, and contributor/architecture docs (`CONTRIBUTING*`, `docs/architecture*`, ADRs).
 
 Record what already exists. This decides whether this run is a **create** or an **audit/update** (idempotency, section 9).
 
@@ -121,7 +121,7 @@ Look specifically for: obsolete facts, duplicates, conflicts, nonexistent comman
 
 Target about 50–150 lines; exceed about 200 only with a stated reason. Not a handbook. Don't restate what Claude can trivially read from the code (file listings, obvious conventions).
 
-**`.claude/rules/*.md`**: one focused concern per file. Create a file only when there is enough repository-specific content to justify it. Candidate names, used ONLY where justified: `verification.md`, `change-discipline.md`, `security.md`, `testing.md`, `architecture.md`, `database.md`, `api.md`, `generated-files.md`. Fewer strong rules beat many weak ones. Avoid duplicating content between CLAUDE.md and rules files.
+**`.claude/rules/*.md`**: one focused concern per file. Create a file only when there is enough repository-specific content to justify it. Candidate names, used ONLY where justified: `verification.md`, `change-discipline.md`, `security.md`, `testing.md`, `architecture.md`, `database.md`, `api.md`, `generated-files.md`, `orchestration.md`. Fewer strong rules beat many weak ones. Avoid duplicating content between CLAUDE.md and rules files.
 
 **Path scoping:** when a rule applies only to part of the repo (API, migrations, frontend, backend, infra, generated files, a package), scope it with the `paths` frontmatter this Claude Code version supports for `.claude/rules/*.md`:
 
@@ -148,6 +148,13 @@ Rules without `paths` load always. Every glob MUST match at least one existing t
 - **Data/concurrency:** where the repo mutates shared or persistent state, retries, or processes queues: require examining transactions, idempotency, duplicate processing, and check-then-act races, scoped to the relevant paths.
 - **Performance:** only for verified hot paths or query layers: consider complexity, N+1 access, and repeated I/O when changing loops or data access there.
 - **External calls:** where integrations exist: consider timeout, retry, and failure behavior using the patterns the repo already uses.
+- **Orchestration (subagents / parallel agents):** generate only when the repo is large enough, or has independent verified modules, for delegation to matter; or when the project already defines agents/workflows in `.claude/agents/` or `.claude/workflows/`. A small single-module repo gets at most a line or two in CLAUDE.md, or nothing. Ground every rule in the repo's verified boundaries:
+  - WHEN a task needs broad read-only exploration across many files → DO delegate it to a read-only subagent and keep only conclusions → VERIFY key claims by reading the cited files before acting on them. Do not delegate small or single-file tasks.
+  - WHEN splitting work across parallel agents → DO partition by verified module or package boundaries (name them) so that no two agents edit the same file; a shared contract (schema, generated client, shared types, migrations) is changed by one agent first, and consumers follow → VERIFY the agents' file sets are disjoint before launching them.
+  - WHEN delegating → DO give each agent a self-contained brief: goal, files in scope, files out of scope, constraints from this config, the verified validation commands, and the expected output → VERIFY the brief doesn't rely on conversation context the agent can't see.
+  - WHEN an agent reports results → DO treat them as claims, not evidence: inspect its diff and re-run the relevant validation yourself → VERIFY before reporting; never relay "tests pass" or "fixed" from an agent without observed output.
+  - WHEN parallel work is merged → DO run broader validation on the combined result and review the full final diff yourself; integration failures belong to the orchestrator → VERIFY the combined result, not each part in isolation.
+  - Prefer project-defined agents and workflows when they exist; reference them by their actual names. Keep the number of agents proportional to the task. Destructive or outward-facing actions (deploys, migrations, pushes) stay with the orchestrator and need the user's confirmation; never delegate them.
 
 ### Phase G: Rule quality gate
 
@@ -174,6 +181,8 @@ Mentally run the resulting rules against these scenarios, keeping only the ones 
 - Retryable or concurrent state mutation changes. Are races and idempotency examined?
 - A hot path or query loop changes. Are algorithmic and I/O costs considered?
 - An external dependency call changes. Are timeout and failure behavior considered?
+- Two parallel agents both need to edit a shared file or contract. Do the rules force a single owner and an ordering?
+- A subagent reports "all tests pass". Would the orchestrator re-verify before reporting it?
 
 ### Phase I: Validate the configuration
 
