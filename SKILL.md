@@ -46,7 +46,7 @@ Record what already exists. This decides whether this run is a **create** or an 
 
 ### Phase B: Targeted repository discovery
 
-Use cheap evidence first: `git ls-files | head`/counts, top-level tree, manifests, CI files, then targeted reads. Do not read the repository blindly. For large repos, you may delegate read-only discovery to an Explore subagent and keep only conclusions.
+Use cheap evidence first: `git ls-files | head`/counts, top-level tree, manifests, CI files, then targeted reads. Do not read the repository blindly. For large repos, you may delegate read-only discovery to an Explore subagent, using a smaller/faster model where the tool allows it, and keep only conclusions.
 
 Establish, where evidence permits, and label each item VERIFIED / INFERRED / UNKNOWN:
 
@@ -155,6 +155,13 @@ Rules without `paths` load always. Every glob MUST match at least one existing t
   - WHEN an agent reports results → DO treat them as claims, not evidence: inspect its diff and re-run the relevant validation yourself → VERIFY before reporting; never relay "tests pass" or "fixed" from an agent without observed output.
   - WHEN parallel work is merged → DO run broader validation on the combined result and review the full final diff yourself; integration failures belong to the orchestrator → VERIFY the combined result, not each part in isolation.
   - Prefer project-defined agents and workflows when they exist; reference them by their actual names. Keep the number of agents proportional to the task. Destructive or outward-facing actions (deploys, migrations, pushes) stay with the orchestrator and need the user's confirmation; never delegate them.
+  - **Model and effort proportionality.** WHEN delegating → DO pick the cheapest model and lowest reasoning effort that can do the job: a smaller, faster model and low effort for search, lookups, summarizing, and mechanical edits; the largest model and high/xhigh/max effort only for genuinely hard reasoning (cross-module design, subtle security or concurrency analysis, a bug that cheaper attempts failed on) → VERIFY that any elevated choice has a stated reason in the brief. Escalate on evidence (insufficient output, a failed attempt), never preemptively. Only use mechanisms the installed version supports: the per-call `model` override on the Agent tool, and the `model` / `effort` frontmatter in `.claude/agents/*.md`. Prefer model aliases over pinned model IDs unless the repo pins them. WHEN an existing project agent definition sets the largest model or high+ effort for routine work → report it as a REWRITE recommendation (agent definitions are outside this skill's write scope).
+- **Herdr (herdr.dev), only if used:** generate these rules only when there's evidence the repo or its contributors use Herdr (references in agent config, docs, or scripts, e.g. `git grep -il herdr`; a `herdr` skill in `.claude/skills/`) or the user asks for them via the arguments. Otherwise omit them. Don't copy CLI syntax into the rules; point to `herdr --help` and the herdr skill, which are authoritative. Rules:
+  - WHEN about to use Herdr → DO check `test "${HERDR_ENV:-}" = 1` and use Herdr only when the user explicitly asked for it → VERIFY the check passed; otherwise use the built-in subagents, and never control a Herdr session from outside a Herdr-managed pane.
+  - WHEN starting an agent or command through Herdr → DO use a sibling pane in the current tab and cwd, with background (no-focus) mode and a unique agent name; create workspaces, tabs, or worktrees only on explicit request → VERIFY by taking pane and agent IDs from the JSON responses, never by guessing them.
+  - The partitioning, brief, and claims-not-evidence rules above apply to Herdr agents too: one owner per file, and read the agent's output and inspect its diff yourself before reporting. A Herdr `unknown` state doesn't prove completion. WHEN an agent is `blocked` on an approval or question → DO inspect it and ask the user, never answer it on your own.
+  - Model and effort proportionality applies to agents started through Herdr; pass native agent options only as listed by the installed `herdr agent` help.
+  - Never close workspaces, tabs, or panes you didn't create, never run `herdr server stop`, and never kill the Herdr process unless the user explicitly asks.
 
 ### Phase G: Rule quality gate
 
@@ -183,6 +190,7 @@ Mentally run the resulting rules against these scenarios, keeping only the ones 
 - An external dependency call changes. Are timeout and failure behavior considered?
 - Two parallel agents both need to edit a shared file or contract. Do the rules force a single owner and an ordering?
 - A subagent reports "all tests pass". Would the orchestrator re-verify before reporting it?
+- A trivial lookup is delegated to the largest model at max effort. Do the rules steer it to a cheaper model and lower effort?
 
 ### Phase I: Validate the configuration
 
