@@ -87,7 +87,7 @@ The skill runs fixed phases. `SKILL.md` holds the workflow; detail loads only wh
 
 - **Rules are guidance, not guarantees.** Claude can still ignore prose; that's why critical restrictions are flagged for mechanical enforcement.
 - **Output quality follows the evidence.** A repo without CI, scripts, or lockfiles yields fewer, more cautious rules and more unknowns.
-- **Headless runs** (`claude -p`) can't approve writes to `.claude/`, so the proposed rules files are returned in the report instead of being written.
+- **Headless runs** (`claude -p`) can't approve writes to `.claude/`, so each unwritten rule file is returned as complete, ready-to-save Markdown with its `paths` frontmatter.
 - A full run reads a fair part of the repository and takes several minutes on larger projects.
 
 ## Development
@@ -98,6 +98,19 @@ The skill runs fixed phases. `SKILL.md` holds the workflow; detail loads only wh
 tests/run.sh          # several minutes; needs claude, git, python3 with PyYAML
 tests/run.sh --keep   # keep the temp repo and report for inspection
 ```
+
+`tests/compare.py` compares `/init-rules` with Anthropic's `claude-md-improver` on three isolated fixture repositories: a Python service, a Go CLI, and a browser app. It runs both skills on the same starting files, saves their outputs, and reports separate checks for commands, forbidden commands, preserved knowledge, paths, change scope, rule files, length, and runtime. It deliberately does not compute one overall score. Review the saved files for unsupported claims and useful detail; these automated checks are narrow. The command invokes Claude Code repeatedly and incurs API cost.
+
+The first comparison and the follow-up regression result are recorded in [tests/BENCHMARK.md](tests/BENCHMARK.md).
+
+```bash
+python3 tests/compare.py run \
+  --plugin-dir /path/to/claude-md-management \
+  --output-dir /tmp/init-rules-benchmark
+python3 tests/compare.py score --output-dir /tmp/init-rules-benchmark
+```
+
+The official plugin directory must contain `.claude-plugin/plugin.json`. The `score` command can re-evaluate saved outputs without another Claude run. Use `--case demo`, `--case go_cli`, or `--case web_app` to limit a run.
 
 The fixture's `CLAUDE.md` is stored as `CLAUDE.md.fixture` so it never loads while you work on this repo.
 

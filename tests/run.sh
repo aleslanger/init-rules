@@ -15,11 +15,16 @@ git -C "$repo" -c user.email=test@example.com -c user.name=test commit -qm fixtu
 
 echo "== help mode"
 help_out=$(cd "$repo" && claude -p "/init-rules help" --max-turns 2)
-grep -q "Usage" <<<"$help_out" && echo "PASS help printed" || { echo "FAIL help not printed"; exit 1; }
+if grep -Fq "/init-rules enforce" <<<"$help_out" && grep -Fq "/init-rules help" <<<"$help_out"; then
+  echo "PASS help printed"
+else
+  echo "FAIL help not printed"; exit 1
+fi
 [ -z "$(git -C "$repo" status --porcelain)" ] && echo "PASS help changed nothing" || { echo "FAIL help changed files"; exit 1; }
 
 echo "== full run (several minutes)"
 (cd "$repo" && claude -p "/init-rules" --permission-mode acceptEdits \
+  --add-dir "$here/../references" \
   --allowedTools "Read,Write,Edit,Glob,Grep,TodoWrite,Agent,Edit(.claude/rules/**),Edit(CLAUDE.md),Bash(mkdir *),Bash(git *),Bash(ls *),Bash(find *),Bash(cat *),Bash(grep *),Bash(python3 *),Bash(wc *),Bash(head *),Bash(make -n *)" \
   > "$work/report.txt" 2>&1)
 

@@ -43,7 +43,8 @@ check("3.11" in claude, "minimum Python version (requires-python >=3.11) stated"
 NEGATION = re.compile(r"n't|not |no |missing|absent", re.I)
 paths = {t for line in claude.splitlines() if not NEGATION.search(line)
          for t in re.findall(r"`([^`\s<>]+)`", line)
-         if "/" in t or re.search(r"\.(py|toml|ini|yml|md|proto|example)$", t)}
+         if ("/" in t or re.search(r"\.(py|toml|ini|yml|md|proto|example)$", t))
+         and not re.fullmatch(r"\.[A-Za-z0-9]+", t)}
 paths = {p.rstrip("/").split("::")[0] for p in paths if not p.startswith(("http", "-", ".claude/"))}
 # A bare file name (e.g. `models.py` next to `app/db/`) may live anywhere in the repo.
 missing = [p for p in paths
@@ -60,6 +61,15 @@ for f in glob.glob(f"{repo}/.claude/rules/*.md"):
             hit = subprocess.run(["git", "-C", repo, "ls-files", f":(glob){g}"],
                                  capture_output=True, text=True).stdout.strip()
             check(bool(hit), f"{f}: glob matches files: {g}")
+
+proposed = re.findall(r"^\*{0,2}`(\.claude/rules/[^`]+\.md)`\*{0,2}:?\s*$", report, re.M)
+blocked = bool(re.search(r"sensitive file|write.{0,30}denied|zápis.{0,30}zablok|nešlo schválit", report, re.I))
+if not glob.glob(f"{repo}/.claude/rules/*.md") and (proposed or blocked):
+    blocks = re.findall(r"```markdown\s*\n(.*?)\n```", report, re.S)
+    check(bool(proposed) and len(blocks) >= len(proposed)
+          and all(block.startswith("---\npaths:\n") and block.count("\n---\n") == 1
+                  and len(block.splitlines()) > 5 for block in blocks[:len(proposed)]),
+          "blocked rule writes include complete ready-to-save Markdown files")
 
 check(len(claude.splitlines()) <= 200, f"CLAUDE.md is compact ({len(claude.splitlines())} lines)")
 print(f"\n{len(failures)} failure(s)")

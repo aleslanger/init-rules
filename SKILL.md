@@ -64,7 +64,7 @@ Report   findings, files changed, highest-impact rules, preserved/rewritten rule
 
 **Accuracy beats comprehensiveness.** A small, precise configuration beats a large, plausible-looking one. Every rule must change behavior; delete anything that would not.
 
-The generated rules must instill these agent behaviors, phrased concretely for THIS repository (not as slogans):
+Use these behaviors while doing the work. Add one to the generated rules only when repository evidence gives it a specific trigger, command, path, or recurring failure that future sessions would otherwise miss. Do not copy universal working advice into every repository:
 - **Think before coding:** inspect the implementation, nearby context, callers/consumers, and relevant tests; understand expected behavior and blast radius before editing. The first plausible location is not proof the full change has been found.
 - **Prefer simplicity:** smallest coherent solution; established repo patterns; no speculative abstractions, premature generalization, unnecessary dependencies, or hypothetical architecture.
 - **Surgical changes:** every changed line traces to the task, a necessary supporting change, a correctness issue the task exposed, or required validation. No opportunistic refactors, unrelated formatting/renaming, dependency churn, or drive-by cleanup.
@@ -103,7 +103,7 @@ Evaluate only risks actually relevant to this repo, with evidence, using the ris
 Never overwrite existing rules blindly. Classify every existing instruction as one of:
 - **KEEP**: true, valuable, correctly scoped.
 - **REWRITE**: valuable but vague, unactionable, or unobservable.
-- **MOVE**: belongs in a path-scoped rule, or vice versa.
+- **MOVE**: belongs in a path-scoped rule, or vice versa. Treat the move as complete only after the destination file was written and validated; otherwise KEEP the original instruction in its existing file.
 - **DELETE**: obsolete, duplicate, contradicted by evidence, generic filler, or references nonexistent commands/paths.
 - **ENFORCE MECHANICALLY**: a hard restriction that exists only as prose and whose violation is unacceptable.
 - **UNKNOWN**: can't verify; keep unchanged and flag it, rather than delete it on a guess.
@@ -116,13 +116,12 @@ Look specifically for: obsolete facts, duplicates, conflicts, nonexistent comman
 
 **CLAUDE.md**: only broadly needed, high-value, VERIFIED content:
 - project purpose (one or two lines)
-- architecture summary and key boundaries
-- canonical commands (verified only)
-- universal project invariants
-- working method (the behaviors from section 1, made concrete for this repo, compactly)
-- repository-specific **Definition of Done** (section 7)
+- non-obvious architecture boundaries, if they change how to edit the repo
+- canonical commands that a future session needs (verified only)
+- project-specific invariants, risks, and validation triggers
+- a short repository-specific **Definition of Done** only when it adds requirements beyond the verified commands and rules (section 7)
 
-Target about 50–150 lines; exceed about 200 only with a stated reason. Not a handbook. Don't restate what Claude can trivially read from the code (file listings, obvious conventions).
+Use the fewest lines that preserve those facts. For a small single-module repo, target at most 40 lines unless a specific risk needs more; do not pad to a minimum or add headings with no content. Exceed about 200 lines only with a stated reason. Before keeping a line, ask what realistic mistake it prevents and whether the same fact is already obvious from a nearby file or another rule. Not a handbook; omit file listings, obvious conventions, generic workflow reminders, and duplicate details. Put obsolete commands and nonexistent paths in the report, never in the generated configuration, even as a warning; a future agent may copy them despite the negation. Preserve exact source and output paths for generated files when that mapping matters. State a verified minimum runtime version in one line, without a catalogue of syntax examples.
 
 **`.claude/rules/*.md`**: one focused concern per file. Create a file only when there is enough repository-specific content to justify it. Candidate names, used ONLY where justified: `verification.md`, `change-discipline.md`, `security.md`, `testing.md`, `architecture.md`, `database.md`, `api.md`, `generated-files.md`, `orchestration.md`, `performance.md`, `code-quality.md`. Fewer strong rules beat many weak ones. Avoid duplicating content between CLAUDE.md and rules files.
 
@@ -136,13 +135,13 @@ paths:
 ---
 ```
 
-If a write to `.claude/rules/` is denied or blocked by a permission prompt, do NOT fold path-specific rules into CLAUDE.md as a workaround. Ask the user to approve the write; if that is impossible (headless run), leave CLAUDE.md compact and put the proposed rules files' full content in the final report.
+If a write to `.claude/rules/` is denied or blocked by a permission prompt, do NOT fold new path-specific rules into CLAUDE.md as a workaround. Keep every valid pre-existing rule in its original file until the replacement was actually written and validated; never leave a durable instruction missing because its proposed destination exists only in the report. Ask the user to approve the write; if that is impossible (headless run), leave CLAUDE.md compact. In the final report, give the exact ready-to-save content of **each** unwritten rule file in its own fenced `markdown` block, including complete `---` frontmatter, `paths` globs, and every rule. A summary or bullet list is insufficient. Validate each proposed glob against tracked files and say explicitly that the files were not written.
 
 Rules without `paths` load always. Every glob MUST match at least one existing tracked file. Check with `git ls-files '<glob>'`, or `find` when the repo is not a git repo. Do not invent other frontmatter keys.
 
 **Rule content requirements** (include each only where applicable to this repo):
 
-Read `references/rule-catalog.md` now and apply each rule family that fits this repo: sweep verification, failure handling, validation-bypass protection, generated files, secrets, authN/authZ, data/concurrency, architecture, performance, code quality, versions/real APIs/deprecations, coding standard, conventions, no duplicate code, documentation, external calls, working method (plan and clarify, bug reproduction first, independent review of risky changes), orchestration (model/effort, coordinator, agent supervision), and Herdr.
+Read `references/rule-catalog.md` now and evaluate each rule family that fits this repo: sweep verification, failure handling, validation-bypass protection, generated files, secrets, authN/authZ, data/concurrency, architecture, performance, code quality, versions/real APIs/deprecations, coding standard, conventions, no duplicate code, documentation, external calls, working method, orchestration, and Herdr. Include a rule only if it passes the quality gate below; a relevant family does not require output.
 
 ### Phase G: Rule quality gate
 
@@ -182,6 +181,7 @@ Inspect the complete diff of everything you changed: `git diff` and `git status 
 - all referenced paths exist, and all commands are repository-backed
 - generated files are handled via their source of truth
 - no contradictory, duplicate, or filler rules remain
+- every valid pre-existing instruction remains in a written file unless a written and validated replacement supersedes it; a proposed file in the report does not count
 - local rules are path-scoped appropriately
 - no unsupported assumptions (INFERRED stated as fact, or UNKNOWN turned into a rule)
 - nothing in the rules or the report implies validation that wasn't performed
@@ -190,7 +190,7 @@ Fix any issues, then re-inspect the diff.
 
 ## 7. Definition of Done (generated for the repo)
 
-Generate a repository-specific DoD in CLAUDE.md containing only the items that apply, each naming verified commands:
+If the repo has non-obvious completion requirements, generate a compact repository-specific DoD in CLAUDE.md. Select only items that apply and add information not already stated elsewhere; name verified commands where relevant. If it only repeats the command list or generic validation advice, omit the DoD heading. Candidate checks:
 - the requested behavior is implemented
 - focused validation is run (name the verified focused-test command)
 - broader validation is proportional to blast radius (name the verified commands)
@@ -226,7 +226,7 @@ This skill must be safe to rerun.
 
 Return:
 
-**Repository findings**: only important VERIFIED findings on architecture, tooling, boundaries, validation, and operations. Include the architecture rules found (tool-enforced vs convention-only), the performance evidence found (budgets, benchmarks, SLOs, hot paths; executable vs documented only), the code-quality conventions and exemplars chosen, the adopted coding standard with its enforcing config, the shared-code locations used for reuse, the documentation locations, tooling, and drift found, and the verified language/runtime/framework versions (the minimum, its source, any conflicts) plus the deprecation tooling.
+**Repository findings**: only important VERIFIED findings on architecture, tooling, boundaries, validation, and operations. Report applicable evidence and material conflicts; omit categories with no finding. Keep detailed discovery in the report rather than adding it to CLAUDE.md solely for completeness.
 
 **Configuration changed**: for each file: `path` · purpose · scope (always-loaded or the `paths` globs) · created/updated.
 
